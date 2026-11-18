@@ -67,6 +67,8 @@ function orderBody(overrides = {}) {
 test('configuration rejects live payment credentials and environments', () => {
   assert.throws(() => getPaymentConfig({ PAYMENT_ENVIRONMENT: 'live' }), /only supports PayMongo test mode/)
   assert.throws(() => getPaymentConfig({ PAYMONGO_SECRET_KEY: 'sk_live_not_allowed' }), /test secret keys/)
+  assert.equal(getPaymentConfig({ APP_BASE_URL: 'printhub-mics.up.railway.app' }).appBaseUrl, 'https://printhub-mics.up.railway.app')
+  assert.equal(getPaymentConfig({ APP_BASE_URL: 'https://printhub-mics.up.railway.app/' }).appBaseUrl, 'https://printhub-mics.up.railway.app')
 })
 
 test('server rejects modified totals and unauthorized order lookups', async () => {

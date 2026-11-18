@@ -7,6 +7,15 @@ export class HttpError extends Error {
   }
 }
 
+export function normalizeAppBaseUrl(value) {
+  const configuredUrl = String(value || 'http://localhost:5173').trim()
+  const url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(configuredUrl) ? configuredUrl : `https://${configuredUrl}`)
+  if (!['http:', 'https:'].includes(url.protocol)) {
+    throw new Error('APP_BASE_URL must use HTTP or HTTPS.')
+  }
+  return url.origin
+}
+
 export function getPaymentConfig(env) {
   if ((env.PAYMENT_ENVIRONMENT || 'test') !== 'test') {
     throw new Error('PrintHub only supports PayMongo test mode. PAYMENT_ENVIRONMENT must be "test".')
@@ -27,7 +36,7 @@ export function getPaymentConfig(env) {
     secretKey,
     publicKey,
     webhookSecret: env.PAYMONGO_WEBHOOK_SECRET || '',
-    appBaseUrl: (env.APP_BASE_URL || 'http://localhost:5173').replace(/\/+$/, ''),
+    appBaseUrl: normalizeAppBaseUrl(env.APP_BASE_URL),
   }
 }
 

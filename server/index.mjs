@@ -7,7 +7,7 @@ import { dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { ACCEPTED_DOCUMENT_TYPES, ACCEPTED_FILE_TYPES, DEFAULT_PRICING, MAX_FILE_SIZE, PAPER_SIZES, SERVICES } from './shared-data.mjs'
-import { assertTestModeSession, getPaymentConfig, HttpError, paidGcashPayment, paymongoRequest, verifyWebhookSignature } from './paymongo.mjs'
+import { assertTestModeSession, getPaymentConfig, HttpError, normalizeAppBaseUrl, paidGcashPayment, paymongoRequest, verifyWebhookSignature } from './paymongo.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const distDir = join(root, 'dist')
@@ -175,7 +175,7 @@ function requireStaff(request, db, adminOnly = false) {
 function checkOrigin(request, env) {
   const origin = request.headers.origin
   if (!origin) return
-  const allowed = new URL(env.APP_BASE_URL || 'http://localhost:5173').origin
+  const allowed = normalizeAppBaseUrl(env.APP_BASE_URL)
   if (origin !== allowed) throw new HttpError(403, 'Request origin is not allowed.')
 }
 
@@ -344,7 +344,7 @@ export function createPrintHubServer({
 } = {}) {
   const paymentConfig = getPaymentConfig(env)
   const db = createDatabase(dbPath)
-  const origin = new URL(env.APP_BASE_URL || 'http://localhost:5173').origin
+  const origin = normalizeAppBaseUrl(env.APP_BASE_URL)
   const isProduction = env.NODE_ENV === 'production'
 
   const server = createServer(async (request, response) => {
