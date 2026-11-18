@@ -12,6 +12,12 @@ To run only the API, use `npm run dev:api`. The Vite development server proxies 
 
 See [PAYMONGO_SETUP.md](PAYMONGO_SETUP.md) for credentials, webhook setup, and test payment instructions.
 
+## Deploy to Railway
+
+Configure the service to build with `npm run build` and start with `npm start`. The production server serves the built frontend and API from the same service, listens on Railway's `PORT`, and binds to all network interfaces. Set `APP_BASE_URL` to the public HTTPS URL of the Railway service; Railway supplies `PORT` automatically, so it does not need to be added manually.
+
+Railway's local filesystem is ephemeral unless a volume is attached. Attach a persistent volume for `server/data/` if orders and uploads must survive redeployments.
+
 ## Included workflows
 
 - Customers submit a print file, receive a server-priced total, accept it, and can launch a hosted GCash checkout in PayMongo TEST mode.

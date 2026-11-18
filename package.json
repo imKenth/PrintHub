@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:api": "node --disable-warning=ExperimentalWarning server/index.mjs",
+    "start": "node --disable-warning=ExperimentalWarning server/index.mjs",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test:api": "node --disable-warning=ExperimentalWarning --test server/index.test.mjs",

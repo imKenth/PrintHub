@@ -3,16 +3,75 @@ import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypt
 import { mkdirSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile, unlink } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
-import { dirname, extname, join, resolve } from 'node:path'
+import { dirname, extname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DatabaseSync } from 'node:sqlite'
 import { ACCEPTED_DOCUMENT_TYPES, ACCEPTED_FILE_TYPES, DEFAULT_PRICING, MAX_FILE_SIZE, PAPER_SIZES, SERVICES } from './shared-data.mjs'
 import { assertTestModeSession, getPaymentConfig, HttpError, paidGcashPayment, paymongoRequest, verifyWebhookSignature } from './paymongo.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const distDir = join(root, 'dist')
 const envPath = join(root, '.env')
 const MAX_BODY_BYTES = 16 * 1024 * 1024
 const SESSION_COOKIE = 'printhub_session'
+const contentTypes = {
+  '.css': 'text/css; charset=utf-8',
+  '.html': 'text/html; charset=utf-8',
+  '.ico': 'image/x-icon',
+  '.jpeg': 'image/jpeg',
+  '.jpg': 'image/jpeg',
+  '.js': 'text/javascript; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.wasm': 'application/wasm',
+}
+
+async function serveFrontend(request, response, pathname) {
+  if (!existsSync(distDir)) {
+    jsonResponse(response, 503, { error: 'Frontend build is missing. Run npm run build before starting the server.' })
+    return
+  }
+
+  let filePath
+  try {
+    filePath = resolve(distDir, `.${decodeURIComponent(pathname)}`)
+  } catch {
+    jsonResponse(response, 400, { error: 'Invalid URL path.' })
+    return
+  }
+
+  const relativePath = relative(distDir, filePath)
+  if (relativePath === '..' || relativePath.startsWith(`..${sep}`)) {
+    jsonResponse(response, 400, { error: 'Invalid URL path.' })
+    return
+  }
+
+  if (!existsSync(filePath) || !filePath.startsWith(`${distDir}${sep}`)) {
+    if (extname(filePath)) {
+      jsonResponse(response, 404, { error: 'Frontend asset not found.' })
+      return
+    }
+    filePath = join(distDir, 'index.html')
+  }
+
+  try {
+    const content = await readFile(filePath)
+    response.writeHead(200, {
+      'Content-Type': contentTypes[extname(filePath).toLowerCase()] || 'application/octet-stream',
+      'Cache-Control': filePath.endsWith('index.html') ? 'no-cache' : 'public, max-age=31536000, immutable',
+      'X-Content-Type-Options': 'nosniff',
+    })
+    response.end(request.method === 'HEAD' ? undefined : content)
+  } catch (error) {
+    if (error?.code === 'ENOENT') {
+      jsonResponse(response, 404, { error: 'Frontend asset not found.' })
+      return
+    }
+    throw error
+  }
+}
 
 function loadEnvFile() {
   if (!existsSync(envPath)) return
@@ -621,6 +680,10 @@ export function createPrintHubServer({
         return
       }
 
+      if (!path.startsWith('/api/') && ['GET', 'HEAD'].includes(method)) {
+        await serveFrontend(request, response, path)
+        return
+      }
       jsonResponse(response, 404, { error: 'API route not found.' })
     } catch (error) {
       if (error instanceof HttpError) {
@@ -646,9 +709,9 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
   if (process.env.PAYMONGO_SECRET_KEY && !process.env.PAYMONGO_SECRET_KEY.startsWith('sk_test_')) {
     throw new Error('Live PayMongo keys are not supported. Use an sk_test_ key.')
   }
-  const port = Number(process.env.API_PORT || 3001)
+  const port = Number(process.env.PORT || process.env.API_PORT || 3001)
   const server = createPrintHubServer()
-  server.listen(port, '127.0.0.1', () => {
-    console.log(`PrintHub test-mode API listening at http://127.0.0.1:${port}`)
+  server.listen(port, '0.0.0.0', () => {
+    console.log(`PrintHub test-mode server listening on port ${port}`)
   })
 }
