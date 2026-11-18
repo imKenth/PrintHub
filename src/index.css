@@ -1,0 +1,69 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
+
+:root {
+  font-family: 'DM Sans', 'Segoe UI', sans-serif;
+  color: #35213d;
+  background: #fff8fc;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-optical-sizing: auto;
+  font-weight: 400;
+
+  --pink: #e94b93;
+  --pink-hover: #d93680;
+  --pink-soft: #fce7f1;
+  --pink-pale: #fff4f9;
+  --plum: #35213d;
+  --text: #817487;
+  --border: #f1dce8;
+  --white: #fff;
+  --green: #22a862;
+  --amber: #dc940b;
+  --shadow: 0 8px 26px rgba(89, 46, 75, 0.07);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+  background: #fff8fc;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(233, 75, 147, 0.42);
+  outline-offset: 2px;
+}
+
+a {
+  color: inherit;
+}
+
+::selection {
+  color: #35213d;
+  background: #f9cde0;
+}
