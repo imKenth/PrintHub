@@ -115,14 +115,22 @@
 }
 
 .public-header {
+  position: sticky;
+  top: 12px;
+  z-index: 40;
   min-height: 78px;
   width: min(1280px, calc(100% - 64px));
   margin: 0 auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 0 24px;
   gap: 28px;
-  border-bottom: 1px solid rgba(241, 220, 232, 0.85);
+  border: 1px solid rgba(241, 220, 232, 0.9);
+  border-radius: 20px;
+  background: rgba(255, 248, 252, 0.96);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 8px 26px rgba(89, 46, 75, 0.09);
 }
 
 .public-nav,
@@ -593,6 +601,7 @@
 }
 
 .feature-section {
+  scroll-margin-top: 100px;
   padding-top: 33px;
   padding-bottom: 93px;
 }
@@ -612,6 +621,45 @@
 .section-heading > p {
   color: var(--text);
   font-size: 14px;
+}
+
+.scroll-reveal {
+  opacity: 1;
+  transform: none;
+}
+
+.scroll-reveal.reveal-pending {
+  opacity: 0;
+  transform: translateY(22px);
+  transition: opacity 650ms ease, transform 650ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.scroll-reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.feature-card.scroll-reveal.reveal-pending,
+.feature-card.scroll-reveal.is-visible {
+  transition: opacity 650ms ease, transform 650ms cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 170ms ease;
+}
+
+.feature-card.scroll-reveal.is-visible:hover {
+  transform: translateY(-3px);
+}
+
+.feature-card.scroll-reveal:nth-child(2),
+.how-step.scroll-reveal:nth-child(2) {
+  transition-delay: 100ms;
+}
+
+.feature-card.scroll-reveal:nth-child(3),
+.how-step.scroll-reveal:nth-child(3) {
+  transition-delay: 200ms;
+}
+
+.how-step.scroll-reveal:nth-child(4) {
+  transition-delay: 300ms;
 }
 
 .feature-grid {
@@ -680,6 +728,7 @@
 }
 
 .how-section {
+  scroll-margin-top: 100px;
   padding: 76px 0 70px;
   background:
     radial-gradient(ellipse at 94% 5%, rgba(252, 216, 233, 0.66), transparent 30%),
@@ -743,34 +792,83 @@
 }
 
 .public-footer {
-  padding: 32px 0 0;
+  scroll-margin-top: 100px;
+  padding: 43px 0 0;
   background: #fff;
 }
 
 .footer-content {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 28px;
+  grid-template-columns: minmax(190px, 0.7fr) minmax(0, 1.5fr);
+  align-items: start;
+  gap: 36px;
 }
 
-.footer-content > div:first-child p {
+.footer-brand p {
   margin: 8px 0 0 44px;
   color: var(--text);
   font-size: 11px;
 }
 
-.footer-shop {
+.footer-contact h2 {
+  margin: 2px 0 17px;
+  color: var(--plum);
+  font-family: Manrope, sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.footer-contact-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 22px;
+}
+
+.footer-contact-item {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 5px;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+  color: var(--plum);
   font-size: 12px;
 }
 
-.footer-shop span {
-  color: var(--text);
-  font-size: 11px;
-  text-align: right;
+.footer-contact-icon {
+  width: 35px;
+  height: 35px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: var(--pink-hover);
+  border-radius: 11px;
+  background: var(--pink-pale);
+}
+
+.footer-contact-item > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.footer-contact-item b,
+.footer-contact-item > div > span:not(.footer-label),
+.footer-contact-item a {
+  overflow-wrap: anywhere;
+}
+
+.footer-contact-item a {
+  color: #695b70;
+  text-decoration: none;
+}
+
+.footer-contact-item a:hover {
+  color: var(--pink-hover);
+  text-decoration: underline;
+}
+
+.footer-label {
+  color: #9a8da0;
+  font-size: 10px;
 }
 
 .footer-bottom {
@@ -3657,6 +3755,7 @@ select.input {
   .public-header {
     width: calc(100% - 36px);
     min-height: 68px;
+    padding-inline: 18px;
   }
 
   .public-nav {
@@ -3843,6 +3942,7 @@ select.input {
 @media (max-width: 560px) {
   .public-header {
     width: calc(100% - 28px);
+    padding-inline: 12px;
   }
 
   .brand {
@@ -4006,15 +4106,7 @@ select.input {
 
   .footer-content {
     grid-template-columns: 1fr;
-    gap: 20px;
-  }
-
-  .footer-shop {
-    align-items: flex-start;
-  }
-
-  .footer-shop span {
-    text-align: left;
+    gap: 24px;
   }
 
   .footer-bottom {
@@ -4557,6 +4649,17 @@ select.input {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .scroll-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .scroll-reveal.reveal-pending {
+    opacity: 1;
+    transform: none;
+  }
+
   *,
   *::before,
   *::after {

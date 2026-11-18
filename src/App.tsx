@@ -1,254 +1,24 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type DragEvent, type FormEvent, type MouseEvent } from 'react'
 import { Icon } from './components/Icon'
-import { ACCEPTED_DOCUMENT_TYPES, ACCEPTED_FILE_TYPES, MAX_FILE_SIZE, MOCK_STAFF, PAPER_SIZES, SERVICES } from './data'
+import { Badge, Button, EmptyState, Field, Logo, Modal, OrderTimeline, PaymentBadge, PrinterIllustration, StatusBadge } from './components/common/Primitives'
+import { OrderTable } from './components/orders/OrderTable'
+import { ACCEPTED_DOCUMENT_TYPES, ACCEPTED_FILE_TYPES, MAX_FILE_SIZE, MOCK_STAFF } from './data'
 import { formatCurrency, getUnitPrice } from './pricing'
-import type { OrderStatus, PaymentStatus, PrintColor, PrintOrder, PrintService, PricingRule, StaffMember } from './types'
+import type { OrderStatus, PrintOrder, PricingRule, StaffMember } from './types'
+import { apiRequest, downloadOrderFile as downloadFile, fileToBase64 } from './services/api'
+import { initialForm, MAX_ORDER_QUANTITY, protectedPages, adminPages, landingSections, publicPages, type OrderForm, type Page } from './types/app'
+import { quantityUnit, smoothScrollTo } from './utils/format'
+import { HomePage } from './pages/HomePage'
+import { OrderPage } from './pages/OrderPage'
+import { StaffLoginPage } from './pages/StaffLoginPage'
 import './App.css'
-
-type Page = 'home' | 'order' | 'confirmation' | 'payment-result' | 'track' | 'login' | 'dashboard' | 'orders' | 'order-detail' | 'history' | 'pricing' | 'staff'
-type OrderForm = {
-  customerName: string
-  contactNumber: string
-  email: string
-  service: PrintService
-  paperSize: string
-  color: PrintColor
-  quantity: number
-  instructions: string
-}
-
-const initialForm: OrderForm = {
-  customerName: '',
-  contactNumber: '',
-  email: '',
-  service: 'Documents',
-  paperSize: 'A4',
-  color: 'Black & White',
-  quantity: 1,
-  instructions: '',
-}
-
-const allStatuses: OrderStatus[] = ['Pending Payment', 'Paid', 'Processing', 'Ready for Pickup', 'Completed', 'Cancelled']
-const timelineStatuses: OrderStatus[] = ['Pending Payment', 'Paid', 'Processing', 'Ready for Pickup', 'Completed']
-const protectedPages: Page[] = ['dashboard', 'orders', 'order-detail', 'history']
-const adminPages: Page[] = ['pricing', 'staff']
-const MAX_ORDER_QUANTITY = 500
-
-function quantityUnit(service: PrintService, quantity: number) {
-  return service === 'Documents' ? (quantity === 1 ? 'page' : 'pages') : (quantity === 1 ? 'copy' : 'copies')
-}
-
-async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  let response: Response
-  try {
-    response = await fetch(`/api${path}`, {
-      ...init,
-      credentials: 'include',
-      headers: {
-        ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-        ...init?.headers,
-      },
-    })
-  } catch {
-    throw new Error('PrintHub server is unavailable. Start the API server and try again.')
-  }
-  const body = await response.json().catch(() => ({})) as { error?: string } & T
-  if (!response.ok) throw new Error(body.error || 'The request could not be completed.')
-  return body
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => {
-      const result = reader.result
-      if (typeof result !== 'string') {
-        reject(new Error('Could not read the selected file.'))
-        return
-      }
-      resolve(result.slice(result.indexOf(',') + 1))
-    }
-    reader.onerror = () => reject(new Error('Could not read the selected file.'))
-    reader.readAsDataURL(file)
-  })
-}
-
-function Logo({ small = false }: { small?: boolean }) {
-  return (
-    <span className={`brand${small ? ' brand-small' : ''}`}>
-      <span className="brand-mark"><Icon name="printer" size={small ? 19 : 21} /></span>
-      <span>Print<span>Hub</span></span>
-    </span>
-  )
-}
-
-function Button({
-  children,
-  onClick,
-  variant = 'primary',
-  type = 'button',
-  disabled = false,
-  className = '',
-}: {
-  children: ReactNode
-  onClick?: () => void
-  variant?: 'primary' | 'secondary' | 'quiet' | 'danger'
-  type?: 'button' | 'submit'
-  disabled?: boolean
-  className?: string
-}) {
-  return <button className={`button button-${variant} ${className}`} type={type} onClick={onClick} disabled={disabled}>{children}</button>
-}
-
-function Field({
-  label,
-  required,
-  hint,
-  error,
-  children,
-}: {
-  label: string
-  required?: boolean
-  hint?: string
-  error?: string
-  children: ReactNode
-}) {
-  return (
-    <label className="field">
-      <span className="field-label">{label}{required && <span className="required-mark"> *</span>}</span>
-      {children}
-      {hint && <span className="field-hint">{hint}</span>}
-      {error && <span className="field-error">{error}</span>}
-    </label>
-  )
-}
-
-function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'pink' | 'green' | 'amber' | 'purple' | 'red' }) {
-  return <span className={`badge badge-${tone}`}>{children}</span>
-}
-
-function StatusBadge({ status }: { status: OrderStatus }) {
-  const tone = status === 'Pending Payment' ? 'amber' : status === 'Processing' ? 'purple' : status === 'Paid' || status === 'Ready for Pickup' ? 'green' : status === 'Cancelled' ? 'red' : 'neutral'
-  return <Badge tone={tone}>{status}</Badge>
-}
-
-function PaymentBadge({ status }: { status: PaymentStatus }) {
-  const tone = status === 'Paid' ? 'green' : status === 'Pending' ? 'purple' : status === 'Failed' || status === 'Expired' ? 'red' : status === 'Refunded' ? 'neutral' : 'amber'
-  const label = status === 'Unpaid' ? 'Unpaid' : status === 'Pending' ? 'Pending' : status
-  return <Badge tone={tone}>{label}</Badge>
-}
-
-function EmptyState({ title, description, action }: { title: string; description: string; action?: ReactNode }) {
-  return <div className="empty-state"><span className="empty-icon"><Icon name="package" size={23} /></span><h3>{title}</h3><p>{description}</p>{action}</div>
-}
-
-function Modal({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
-  useEffect(() => {
-    const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', closeOnEscape)
-    return () => window.removeEventListener('keydown', closeOnEscape)
-  }, [onClose])
-
-  return (
-    <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}>
-      <section className="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-heading">
-        <div className="modal-heading"><h2 id="modal-heading">{title}</h2><button className="icon-button" aria-label="Close dialog" onClick={onClose}><Icon name="close" /></button></div>
-        {children}
-      </section>
-    </div>
-  )
-}
-
-function PrinterIllustration() {
-  return <img className="printer-illustration" src="/printer-illustration.svg" alt="Pink desktop printer with a printed page, surrounded by sparkles." />
-}
-
-function OrderTimeline({ order }: { order: PrintOrder }) {
-  const current = order.status === 'Cancelled' ? -1 : timelineStatuses.indexOf(order.status)
-  return (
-    <div className="timeline">
-      {timelineStatuses.map((status, index) => (
-        <div className={`timeline-step${index <= current ? ' is-done' : ''}${index === current ? ' is-current' : ''}`} key={status}>
-          <span className="timeline-dot">{index < current ? <Icon name="check" size={14} /> : index + 1}</span>
-          <span className="timeline-label">{status === 'Pending Payment' ? 'Awaiting payment' : status === 'Paid' ? 'Payment confirmed' : status}</span>
-          {index === 0 && <span className="timeline-note">{order.createdAt ? new Date(order.createdAt).toLocaleDateString() : ''}</span>}
-          {index === 1 && order.paymentStatus === 'Paid' && <span className="timeline-note">Payment verified</span>}
-        </div>
-      ))}
-    </div>
-  )
-}
-
-function OrderTable({
-  orders,
-  onView,
-  mode = 'full',
-}: {
-  orders: PrintOrder[]
-  onView: (order: PrintOrder) => void
-  mode?: 'compact' | 'full' | 'history'
-}) {
-  const [query, setQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState('All statuses')
-  const [paymentFilter, setPaymentFilter] = useState('All payments')
-  const [fromDate, setFromDate] = useState('')
-  const [toDate, setToDate] = useState('')
-  const [page, setPage] = useState(1)
-  const pageSize = mode === 'compact' ? 5 : 6
-  const filtered = useMemo(() => orders.filter((order) => {
-    const text = `${order.reference} ${order.customerName} ${order.service}`.toLowerCase()
-    const date = order.createdAt.slice(0, 10)
-    return text.includes(query.toLowerCase())
-      && (statusFilter === 'All statuses' || order.status === statusFilter)
-      && (paymentFilter === 'All payments' || order.paymentStatus === paymentFilter)
-      && (!fromDate || date >= fromDate)
-      && (!toDate || date <= toDate)
-  }), [orders, query, statusFilter, paymentFilter, fromDate, toDate])
-  const pages = Math.max(1, Math.ceil(filtered.length / pageSize))
-  const currentPage = Math.min(page, pages)
-  const visible = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize)
-
-  return (
-    <div className="table-section">
-      <div className="table-toolbar">
-        <label className="search-box"><Icon name="search" size={17} /><input value={query} onChange={(event) => { setQuery(event.target.value); setPage(1) }} placeholder="Search reference, customer..." aria-label="Search orders" /></label>
-        <div className="toolbar-filters">
-          {mode === 'history' && <><label className="date-filter"><span>From</span><input type="date" value={fromDate} onChange={(event) => setFromDate(event.target.value)} aria-label="From date" /></label><label className="date-filter"><span>To</span><input type="date" value={toDate} onChange={(event) => setToDate(event.target.value)} aria-label="To date" /></label></>}
-          <label className="select-filter"><Icon name="filter" size={16} /><select aria-label="Filter by order status" value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value); setPage(1) }}><option>All statuses</option>{allStatuses.map((status) => <option key={status}>{status}</option>)}</select></label>
-          <label className="select-filter"><select aria-label="Filter by payment status" value={paymentFilter} onChange={(event) => { setPaymentFilter(event.target.value); setPage(1) }}><option>All payments</option>{(['Unpaid', 'Pending', 'Paid', 'Failed', 'Expired', 'Refunded'] as PaymentStatus[]).map((status) => <option key={status}>{status}</option>)}</select></label>
-        </div>
-      </div>
-      <div className="table-scroll">
-        <table className="orders-table">
-          <thead><tr><th>Order reference</th><th>Customer</th><th>Service</th><th>Qty.</th><th>Final amount</th><th>Payment</th><th>Status</th><th /></tr></thead>
-          <tbody>{visible.map((order) => (
-            <tr key={order.id}>
-              <td><button className="text-link reference-link" onClick={() => onView(order)}>{order.reference}</button><span className="table-subtext">{new Date(order.createdAt).toLocaleDateString()}</span></td>
-              <td>{order.customerName}<span className="table-subtext">{order.contactNumber}</span></td>
-              <td>{order.service}<span className="table-subtext">{order.paperSize} · {order.color}</span></td>
-              <td>{order.quantity} {quantityUnit(order.service, order.quantity)}</td>
-              <td className="amount-cell">{formatCurrency(order.total)}</td>
-              <td><PaymentBadge status={order.paymentStatus} /></td>
-              <td><StatusBadge status={order.status} /></td>
-              <td><button className="table-action" onClick={() => onView(order)}>View <Icon name="arrow" size={14} /></button></td>
-            </tr>
-          ))}</tbody>
-        </table>
-        {!visible.length && <EmptyState title="No orders match" description="Try changing your search or filters." />}
-      </div>
-      <div className="table-pagination"><span>{filtered.length ? `Showing ${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, filtered.length)} of ${filtered.length} orders` : 'No results'}</span><div><button className="page-button" disabled={currentPage === 1} onClick={() => setPage(currentPage - 1)} aria-label="Previous page">‹</button><span className="page-number">{currentPage} / {pages}</span><button className="page-button" disabled={currentPage === pages} onClick={() => setPage(currentPage + 1)} aria-label="Next page">›</button></div></div>
-    </div>
-  )
-}
 
 function App() {
   const [page, setPage] = useState<Page>(() => {
     if (new URLSearchParams(window.location.search).has('payment')) return 'payment-result'
     const initial = window.location.hash.slice(1) as Page
     if (protectedPages.includes(initial) || adminPages.includes(initial)) return 'login'
-    return ['home', 'order', 'confirmation', 'payment-result', 'track', 'login'].includes(initial) ? initial : 'home'
+    return publicPages.includes(initial) ? initial : 'home'
   })
   const [orders, setOrders] = useState<PrintOrder[]>([])
   const [pricing, setPricing] = useState<PricingRule[]>([])
@@ -307,6 +77,11 @@ function App() {
         return
       }
       const target = window.location.hash.slice(1) as Page
+      if (landingSections.includes(target)) {
+        setPage('home')
+        window.requestAnimationFrame(() => document.getElementById(target)?.scrollIntoView({ behavior: 'smooth' }))
+        return
+      }
       if (protectedPages.includes(target) && !currentUser) {
         setPage('login')
         return
@@ -315,7 +90,7 @@ function App() {
         setPage(currentUser ? 'dashboard' : 'login')
         return
       }
-      setPage(target || 'home')
+      setPage(publicPages.includes(target) ? target : 'home')
     }
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
@@ -323,6 +98,45 @@ function App() {
 
   useEffect(() => {
     document.title = `${page === 'home' ? 'PrintHub' : `${page.replace('-', ' ')} · PrintHub`}`
+  }, [page])
+
+  useEffect(() => {
+    if (page !== 'home') return
+    const elements = document.querySelectorAll<HTMLElement>('.scroll-reveal')
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches || !('IntersectionObserver' in window)) {
+      elements.forEach((element) => element.classList.add('is-visible'))
+      return
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return
+        entry.target.classList.add('is-visible')
+        entry.target.classList.remove('reveal-pending')
+        observer.unobserve(entry.target)
+      })
+    }, { threshold: 0, rootMargin: '0px 0px -48px 0px' })
+
+    elements.forEach((element) => {
+      element.classList.add('reveal-pending')
+      observer.observe(element)
+    })
+    return () => {
+      observer.disconnect()
+      elements.forEach((element) => element.classList.remove('reveal-pending'))
+    }
+  }, [page])
+
+  useEffect(() => {
+    if (page !== 'home') return
+    const sectionId = window.location.hash.slice(1)
+    if (!landingSections.includes(sectionId)) return
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(sectionId)?.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+      })
+    })
+    return () => window.cancelAnimationFrame(frame)
   }, [page])
 
   useEffect(() => {
@@ -409,6 +223,17 @@ function App() {
     setMobileNavOpen(false)
     if (window.location.hash !== `#${target}`) window.history.pushState({}, '', `#${target}`)
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function scrollToLandingSection(event: MouseEvent<HTMLAnchorElement>, sectionId: string) {
+    event.preventDefault()
+    window.history.replaceState({}, '', `#${sectionId}`)
+    const section = document.getElementById(sectionId)
+    if (!section) return
+
+    const headerHeight = document.querySelector('.public-header')?.getBoundingClientRect().height ?? 0
+    const destination = Math.max(0, window.scrollY + section.getBoundingClientRect().top - headerHeight - 16)
+    smoothScrollTo(destination)
   }
 
   function startOrder() {
@@ -681,14 +506,7 @@ function App() {
 
   async function downloadOrderFile(order: PrintOrder) {
     try {
-      const response = await fetch(`/api/orders/file?reference=${encodeURIComponent(order.reference)}`, { credentials: 'include' })
-      if (!response.ok) throw new Error('You are not authorized to download this order file.')
-      const url = URL.createObjectURL(await response.blob())
-      const link = document.createElement('a')
-      link.href = url
-      link.download = order.fileName
-      link.click()
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000)
+      await downloadFile(order.reference, order.fileName)
     } catch (error) {
       setToast(error instanceof Error ? error.message : 'Could not download the order file.')
     }
@@ -706,89 +524,21 @@ function App() {
   ]
 
   function renderLanding() {
-    return (
-      <>
-        <header className="public-header">
-          <a href="#home" className="brand-anchor" onClick={(event) => { event.preventDefault(); navigate('home') }}><Logo /></a>
-          <nav className="public-nav" aria-label="Main navigation">
-            <a href="#features">Why PrintHub</a><a href="#how-it-works">How it works</a><a href="#contact">Contact</a>
-          </nav>
-          <div className="header-actions"><button className="header-login" onClick={() => navigate('login')}>Staff sign in</button><Button onClick={startOrder}>Order now <Icon name="arrow" size={17} /></Button></div>
-        </header>
-        <main>
-          <section className="hero-section page-width">
-            <div className="hero-copy">
-              <span className="eyebrow"><span className="eyebrow-dot" /> Your neighborhood print shop, made simple</span>
-              <h1>Print smarter,<br /><span>not harder.</span></h1>
-              <p>From your first upload to pickup, getting beautiful prints should be the easiest part of your day.</p>
-              <div className="hero-actions"><Button onClick={startOrder}>Start an order <Icon name="arrow" size={18} /></Button><button className="text-action" onClick={() => navigate('track')}>Track an order <Icon name="arrow" size={16} /></button></div>
-              <div className="hero-proof"><span className="proof-avatar"><Icon name="shield" size={16} /></span><span>Clear prices. Quality prints. Ready when you are.</span></div>
-            </div>
-            <div className="hero-visual"><div className="visual-caption"><span className="caption-dot" /><span>Made for your next big idea</span></div><PrinterIllustration /><div className="floating-note"><span className="note-icon"><Icon name="sparkles" size={17} /></span><span><b>Prints that feel</b><br />a little more personal</span></div><div className="floating-sticker"><Icon name="heart" size={19} /></div></div>
-          </section>
-          <section className="feature-section page-width" id="features">
-            <div className="section-heading"><span className="eyebrow">A better way to print</span><h2>Small details. <span>Big difference.</span></h2><p>Everything you need to get your prints done without the back-and-forth.</p></div>
-            <div className="feature-grid">
-              <article className="feature-card"><span className="feature-icon icon-pink"><Icon name="sparkles" size={22} /></span><h3>Fast & easy ordering</h3><p>Choose your print options, upload your file, and see the exact price before you submit.</p><button className="card-link" onClick={startOrder}>Create an order <Icon name="arrow" size={15} /></button></article>
-              <article className="feature-card"><span className="feature-icon icon-lilac"><Icon name="package" size={22} /></span><h3>Track your order</h3><p>Follow every step from payment verification to pickup—no account needed.</p><button className="card-link" onClick={() => navigate('track')}>Find your order <Icon name="arrow" size={15} /></button></article>
-              <article className="feature-card"><span className="feature-icon icon-peach"><Icon name="star" size={22} /></span><h3>Quality prints, always</h3><p>Every order gets the care and attention you'd expect from your local print shop.</p><button className="card-link" onClick={() => document.getElementById('how-it-works')?.scrollIntoView({ behavior: 'smooth' })}>See how it works <Icon name="arrow" size={15} /></button></article>
-            </div>
-          </section>
-          <section className="how-section" id="how-it-works"><div className="page-width how-inner"><div className="section-heading"><span className="eyebrow">Just four easy steps</span><h2>From file to <span>finished.</span></h2><p>Your time is precious. We made ordering straightforward.</p></div><div className="how-grid"><div className="how-step"><span>01</span><h3>Tell us what you need</h3><p>Pick your service, paper, color, and quantity.</p></div><div className="how-step"><span>02</span><h3>Upload your file</h3><p>Share your PDF or image securely with your order.</p></div><div className="how-step"><span>03</span><h3>Know your final price</h3><p>Review and agree to the exact price before submitting.</p></div><div className="how-step"><span>04</span><h3>Pick up & enjoy</h3><p>Track progress and collect your prints when they're ready.</p></div></div><div className="how-cta"><div><h3>Ready when you are.</h3><p>Great prints start with one simple order.</p></div><Button onClick={startOrder}>Place an order <Icon name="arrow" size={17} /></Button></div></div></section>
-        </main>
-        <footer className="public-footer" id="contact"><div className="page-width footer-content"><div><Logo /><p>A little more joy in every print.</p></div><div className="footer-shop"><b>Micah's Printing Shop</b><span>Local pickup · Contact the shop for current hours and payment options</span></div><div className="footer-bottom"><span>© {new Date().getFullYear()} PrintHub. Made with care.</span><button onClick={() => navigate('login')}>Staff portal <Icon name="arrow" size={14} /></button></div></div></footer>
-      </>
-    )
+    return <HomePage onNavigate={navigate} onStartOrder={startOrder} onGoHome={() => {
+      if (page !== 'home') {
+        setPage('home')
+        setMobileNavOpen(false)
+        window.history.replaceState({}, '', '#home')
+        window.requestAnimationFrame(() => smoothScrollTo(0))
+        return
+      }
+      window.history.replaceState({}, '', '#home')
+      smoothScrollTo(0)
+    }} onScrollToSection={scrollToLandingSection} />
   }
-
   function renderOrder() {
-    const steps = ['Print details', 'Add your file', 'Price summary', 'Review & confirm']
-    const subtotal = total ?? 0
-    return (
-      <div className="customer-shell">
-        <header className="simple-header"><button className="back-link" onClick={() => navigate('home')}><Icon name="arrow" size={17} /> Back to home</button><Logo small /><button className="simple-help" onClick={() => navigate('track')}>Track an order</button></header>
-        <main className="order-main page-width">
-          <div className="page-intro"><span className="eyebrow">A fresh batch starts here</span><h1>Let's make something <span>great.</span></h1><p>Tell us what you'd like printed. Your final price is shown before you place the order.</p></div>
-          <div className="stepper" aria-label={`Step ${orderStep} of 4`}>
-            {steps.map((label, index) => <div key={label} className={`stepper-item${orderStep === index + 1 ? ' active' : ''}${orderStep > index + 1 ? ' complete' : ''}`}><span className="stepper-number">{orderStep > index + 1 ? <Icon name="check" size={15} /> : index + 1}</span><span>{label}</span></div>)}
-          </div>
-          <div className="order-layout">
-            <section className="panel order-panel">
-              {orderStep === 1 && <div className="order-step-content"><div className="panel-title"><span className="panel-icon"><Icon name="clipboard" /></span><div><h2>Printing details</h2><p>How can we bring your print to life?</p></div></div>
-                <div className="form-grid">
-                  <Field label="Your name" required><input className="input" autoComplete="name" value={form.customerName} onChange={(event) => setForm({ ...form, customerName: event.target.value })} placeholder="e.g. Micah Casile" /></Field>
-                  <Field label="Contact number" required hint="We'll use this to verify and track your order."><input className="input" autoComplete="tel" inputMode="tel" value={form.contactNumber} onChange={(event) => setForm({ ...form, contactNumber: event.target.value })} placeholder="e.g. 0917 123 4567" /></Field>
-                  <Field label="Email address" hint="Optional — for order updates."><input className="input" type="email" autoComplete="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="you@example.com" /></Field>
-                  <Field label="Print service" required><select className="input" value={form.service} onChange={(event) => { const service = event.target.value as PrintService; setForm((previous) => ({ ...previous, service, quantity: service === 'Documents' ? 1 : 10 })); setUploadedFile(null); setAutomaticPageCount(false); setFormError('') }}>{SERVICES.map((service) => <option value={service} key={service}>{service}</option>)}</select></Field>
-                  <Field label="Paper size" required><select className="input" value={form.paperSize} onChange={(event) => setForm({ ...form, paperSize: event.target.value })}>{PAPER_SIZES.map((size) => <option key={size}>{size}</option>)}</select></Field>
-                  <Field label="Print color" required><div className="choice-row">{(['Black & White', 'Color'] as PrintColor[]).map((color) => <button key={color} type="button" className={`choice-button${form.color === color ? ' selected' : ''}`} onClick={() => setForm({ ...form, color })}>{color === 'Color' ? <Icon name="palette" size={17} /> : <Icon name="document" size={17} />}{color}</button>)}</div></Field>
-                  {form.service !== 'Documents' && <Field label="Quantity" required hint="Number of copies."><div className="quantity-control"><button aria-label="Decrease quantity" disabled={form.quantity <= 1} onClick={() => setForm({ ...form, quantity: Math.max(1, form.quantity - 1) })}><Icon name="minus" size={16} /></button><input aria-label="Quantity" type="number" min="1" max={MAX_ORDER_QUANTITY} value={form.quantity} onChange={(event) => setForm({ ...form, quantity: Number(event.target.value) })} /><button aria-label="Increase quantity" disabled={form.quantity >= MAX_ORDER_QUANTITY} onClick={() => setForm({ ...form, quantity: Math.min(MAX_ORDER_QUANTITY, form.quantity + 1) })}><Icon name="plus" size={16} /></button></div></Field>}
-                  <Field label="Additional instructions" hint="Optional — add finishing or handling notes."><textarea className="input textarea" rows={3} value={form.instructions} onChange={(event) => setForm({ ...form, instructions: event.target.value })} placeholder="Anything else we should know?" /></Field>
-                </div>
-                {unitPrice === null && <p className="inline-alert"><Icon name="info" size={16} /> This printing option is currently unavailable. Please choose another one.</p>}
-              </div>}
-              {orderStep === 2 && <div className="order-step-content"><div className="panel-title"><span className="panel-icon"><Icon name="upload" /></span><div><h2>Add your print file</h2><p>Upload the file you'd like us to print.</p></div></div>
-                <div className="upload-zone" onDragOver={(event) => event.preventDefault()} onDrop={handleFileDrop}><span className="upload-icon"><Icon name="upload" size={24} /></span><h3>Drop your file here</h3><p>or browse from your device</p><Button variant="secondary" onClick={() => fileInput.current?.click()} disabled={isReadingFile}><Icon name="plus" size={17} /> Browse files</Button><span className="upload-note">{form.service === 'Documents' ? 'PDF, DOC, or DOCX · Up to 10 MB' : 'PDF, JPG, JPEG, or PNG · Up to 10 MB'}</span><input ref={fileInput} className="visually-hidden" type="file" accept={form.service === 'Documents' ? ACCEPTED_DOCUMENT_TYPES.join(',') : ACCEPTED_FILE_TYPES.filter((type) => type !== '.doc' && type !== '.docx').join(',')} onChange={(event: ChangeEvent<HTMLInputElement>) => { void handleFile(event.target.files?.[0]); event.target.value = '' }} /></div>
-                {isReadingFile && <p className="file-processing" role="status"><Icon name="clock" size={15} /> Reading PDF pages…</p>}
-                {uploadedFile && <div className="uploaded-file"><span className="file-icon"><Icon name="file" /></span><div><b>{uploadedFile.name}</b><span>{(uploadedFile.size / 1024 / 1024).toFixed(2)} MB · {form.service === 'Documents' && automaticPageCount ? `${form.quantity} pages detected automatically` : 'Ready to attach'}</span></div><button className="remove-file" disabled={isReadingFile} onClick={() => { setUploadedFile(null); setAutomaticPageCount(false); if (form.service === 'Documents') setForm((previous) => ({ ...previous, quantity: 1 })) }} aria-label="Remove uploaded file"><Icon name="close" size={17} /></button></div>}
-                {form.service === 'Documents' && uploadedFile && !automaticPageCount && !isReadingFile && <Field label="Document page count" required hint="Word documents do not contain a reliable printed page count. Enter the page count from your document editor."><input className="input" type="number" min="1" max={MAX_ORDER_QUANTITY} value={form.quantity} onChange={(event) => setForm((previous) => ({ ...previous, quantity: Number(event.target.value) }))} /></Field>}
-                {form.service === 'Documents' && !uploadedFile && <p className="page-count-note"><Icon name="info" size={15} /> PDF page count is detected automatically. For DOC/DOCX, enter the page count after uploading.</p>}
-                <div className="privacy-note"><Icon name="lock" size={17} /><p>Your file is uploaded to the PrintHub server and is only available to authorized staff.</p></div>
-              </div>}
-              {orderStep === 3 && <div className="order-step-content"><div className="panel-title"><span className="panel-icon"><Icon name="wallet" /></span><div><h2>Your price summary</h2><p>Transparent pricing, based on the shop's current rates.</p></div></div><div className="price-breakdown"><div><span>Service</span><b>{form.service}</b></div><div><span>Paper size</span><b>{form.paperSize}</b></div><div><span>Print color</span><b>{form.color}</b></div><div><span>Quantity</span><b>{form.quantity} {quantityUnit(form.service, form.quantity)}</b></div><div><span>Unit price</span><b>{unitPrice === null ? 'Unavailable' : formatCurrency(unitPrice)}</b></div><div className="breakdown-total"><span>FINAL PRICE</span><b>{total === null ? 'Unavailable' : formatCurrency(subtotal)}</b></div></div><div className="selected-payment"><span className="gcash-mark">G</span><span><b>Pay with GCash</b><small>Secure hosted checkout · PayMongo TEST mode</small></span><Icon name="check" size={18} /></div><p className="price-note"><Icon name="info" size={16} /> Your order and amount are verified by the server before checkout. No real money is charged in test mode.</p></div>}
-              {orderStep === 4 && <div className="order-step-content"><div className="panel-title"><span className="panel-icon"><Icon name="check" /></span><div><h2>One last look</h2><p>Make sure your details are right before sending your order.</p></div></div><div className="review-block"><div className="review-heading"><div><span className="eyebrow">Order for</span><h3>{form.customerName}</h3></div><button className="text-link" onClick={() => setOrderStep(1)}>Edit details</button></div><div className="review-grid"><div><span>Contact number</span><b>{form.contactNumber}</b></div><div><span>Email</span><b>{form.email || 'Not provided'}</b></div><div><span>Service</span><b>{form.service}</b></div><div><span>Paper & color</span><b>{form.paperSize} · {form.color}</b></div><div><span>Quantity</span><b>{form.quantity} {quantityUnit(form.service, form.quantity)}</b></div><div><span>Your file</span><b className="review-file"><Icon name="file" size={15} /> {uploadedFile?.name}</b></div><div className="review-total"><span>FINAL PRICE</span><b>{total === null ? 'Unavailable' : formatCurrency(total)}</b></div></div>{form.instructions && <div className="review-instructions"><span>Instructions</span><p>{form.instructions}</p></div>}</div><label className="accept-price"><input type="checkbox" checked={acceptedPrice} onChange={(event) => setAcceptedPrice(event.target.checked)} /><span>I agree to the final price of <b>{total === null ? 'Unavailable' : formatCurrency(total)}</b> and will continue to secure GCash checkout in test mode.</span></label></div>}
-              {formError && <p className="form-error-banner" role="alert"><Icon name="info" size={17} />{formError}</p>}
-              <div className="order-navigation">{orderStep > 1 ? <Button variant="quiet" onClick={() => { setFormError(''); setOrderStep(orderStep - 1) }}><Icon name="arrow" size={16} /> Back</Button> : <span className="secure-caption"><Icon name="lock" size={15} /> No account needed</span>}{orderStep < 4 ? <Button onClick={continueOrder} disabled={(orderStep === 3 && total === null) || (orderStep === 1 && pricing.length === 0)}>Continue <Icon name="arrow" size={17} /></Button> : <Button onClick={() => { const formElement = document.getElementById('order-submit-form') as HTMLFormElement | null; formElement?.requestSubmit() }} disabled={!acceptedPrice || orderSubmitting || checkoutLoading}>{orderSubmitting || checkoutLoading ? 'Connecting to checkout…' : 'Place order & pay with GCash'} <Icon name="arrow" size={17} /></Button>}</div>
-              <form id="order-submit-form" onSubmit={submitOrder} />
-            </section>
-            <aside className="panel price-card"><div className="price-card-header"><span className="price-card-icon"><Icon name="sparkles" size={19} /></span><div><span>Your order</span><b>Live price summary</b></div></div><div className="mini-order"><div><span>Print service</span><b>{form.service}</b></div><div><span>Paper size</span><b>{form.paperSize}</b></div><div><span>Print color</span><b>{form.color}</b></div><div><span>Quantity</span><b>{form.quantity} {quantityUnit(form.service, form.quantity)}</b></div></div><div className="mini-total"><span>FINAL PRICE</span><b>{total === null ? '—' : formatCurrency(total)}</b></div><p className="price-card-note">Your total updates automatically using the shop's current pricing.</p><div className="price-assurance"><Icon name="shield" size={17} /><span>Price locked in when you accept and submit.</span></div></aside>
-          </div>
-        </main>
-        <footer className="simple-footer">Questions? Contact Micah's Printing Shop for help with your order.</footer>
-      </div>
-    )
+    return <OrderPage navigate={navigate} form={form} setForm={setForm} orderStep={orderStep} setOrderStep={setOrderStep} total={total} unitPrice={unitPrice} pricing={pricing} uploadedFile={uploadedFile} setUploadedFile={setUploadedFile} automaticPageCount={automaticPageCount} setAutomaticPageCount={setAutomaticPageCount} formError={formError} setFormError={setFormError} acceptedPrice={acceptedPrice} setAcceptedPrice={setAcceptedPrice} isReadingFile={isReadingFile} fileInput={fileInput} handleFile={handleFile} handleFileDrop={handleFileDrop} continueOrder={continueOrder} orderSubmitting={orderSubmitting} checkoutLoading={checkoutLoading} submitOrder={submitOrder} />
   }
-
   function renderConfirmation() {
     if (!confirmedOrder) return <main className="standalone-page"><EmptyState title="No recent order found" description="Start a new order to receive a reference code." action={<Button onClick={startOrder}>Start an order</Button>} /></main>
     return (
@@ -870,10 +620,6 @@ function App() {
     )
   }
 
-  function renderLogin() {
-    return <main className="login-page"><div className="login-decoration decoration-one" /><div className="login-decoration decoration-two" /><div className="login-shell"><div className="login-brand"><button onClick={() => navigate('home')}><Logo /></button></div><section className="login-card"><span className="login-icon"><Icon name="lock" size={21} /></span><span className="eyebrow">Team access</span><h1>Welcome <span>back.</span></h1><p>Sign in to manage orders and keep things moving.</p><form onSubmit={login}><Field label="Work email" required><input className="input" type="email" autoComplete="username" value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} placeholder="you@shop.com" /></Field><Field label="Password" required><span className="password-wrap"><input className="input" type={showPassword ? 'text' : 'password'} autoComplete="current-password" value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} placeholder="Enter your password" /><button type="button" className="password-toggle" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? 'Hide password' : 'Show password'}><Icon name={showPassword ? 'eyeOff' : 'eye'} size={18} /></button></span></Field>{loginError && <p className="form-error-banner" role="alert"><Icon name="info" size={16} />{loginError}</p>}<Button type="submit" className="login-submit">Sign in <Icon name="arrow" size={17} /></Button></form><div className="demo-credentials"><Icon name="info" size={15} /><span><b>Server authentication</b><br />Use the staff credentials configured in your local <code>.env</code> file.</span></div><button className="back-to-site" onClick={() => navigate('home')}><Icon name="arrow" size={15} /> Back to PrintHub</button></section><p className="login-footnote"><Icon name="shield" size={15} /> GCash checkout and payment verification are restricted to PayMongo test mode.</p></div></main>
-  }
-
   function renderStaffLayout() {
     const isAdminOnly = adminPages.includes(page)
     const pageTitle = page === 'dashboard' ? 'Dashboard' : page === 'orders' ? 'Orders' : page === 'history' ? 'Order history' : page === 'pricing' ? 'Pricing settings' : page === 'staff' ? 'Staff access' : 'Order details'
@@ -951,7 +697,7 @@ function App() {
     {!isStaffPage && page === 'confirmation' && renderConfirmation()}
     {!isStaffPage && page === 'payment-result' && renderPaymentResult()}
     {!isStaffPage && page === 'track' && renderTracking()}
-    {!isStaffPage && page === 'login' && renderLogin()}
+    {!isStaffPage && page === 'login' && <StaffLoginPage email={loginEmail} password={loginPassword} showPassword={showPassword} error={loginError} onEmailChange={setLoginEmail} onPasswordChange={setLoginPassword} onTogglePassword={() => setShowPassword(!showPassword)} onSubmit={login} onNavigateHome={() => navigate('home')} />}
     {isStaffPage && renderStaffLayout()}
     {statusChange && <Modal title={`Move order to ${statusChange.status}?`} onClose={() => setStatusChange(null)}><div className="status-confirmation"><p className="modal-description">{statusChange.status === 'Processing' ? 'Payment has been verified. Confirm that the shop is ready to begin printing this order.' : statusChange.status === 'Ready for Pickup' ? 'Confirm that printing is complete and the customer can collect their order.' : 'Confirm that this order has been picked up and is closed.'}</p><div className="modal-actions"><Button variant="secondary" onClick={() => setStatusChange(null)}>Cancel</Button><Button onClick={confirmOrderStatus}>Confirm status update <Icon name="arrow" size={16} /></Button></div></div></Modal>}
     {toast && <div className="toast-message" role="status"><Icon name="check" size={17} />{toast}<button onClick={() => setToast('')} aria-label="Dismiss notification"><Icon name="close" size={15} /></button></div>}
